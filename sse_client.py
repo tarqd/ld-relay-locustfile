@@ -12,7 +12,7 @@ import six
 
 import urllib3
 
-from util import create_http_pool_manager
+from util import create_http_pool_manager, clean_name
 from ldclient.util import log
 from ldclient.util import throw_if_unsuccessful_response
 from locust.events import request_success, request_failure
@@ -173,7 +173,7 @@ class Event(object):
                     now = time.time()
                     last_heartbeat = instance._last_heartbeat or instance._connect_start
                     duration = int((now - last_heartbeat) * 1000)
-                    request_success.fire(request_type='sse:heartbeat', name='/meval', response_time=duration, response_length=0)
+                    request_success.fire(request_type='sse:heartbeat', name=clean_name('GET', instance.url), response_time=duration, response_length=0)
                     instance._last_heartbeat = now
                 # line began with a ":", so is a comment.  Ignore
                 continue

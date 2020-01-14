@@ -125,9 +125,9 @@ class LaunchDarklyLocust(Locust):
     user = {"anonymous": True, "key": "anonymous"}
     config_class = Config
     client_class = LDClient
-    base_uri = os.environ.get('LAUNCHDARKLY_BASE_URI', 'https://app.launchdarkly.com')
-    events_uri = os.environ.get('LAUNCHDARKLY_EVENTS_URI', 'https://events.launchdarkly.com')
-    stream_uri = os.environ.get('LAUNCHDARKLY_STREAM_URI', 'https://stream.launchdarkly.com')
+    base_uri = os.environ.get('LAUNCHDARKLY_BASE_URI')
+    events_uri = os.environ.get('LAUNCHDARKLY_EVENTS_URI')
+    stream_uri = os.environ.get('LAUNCHDARKLY_STREAM_URI')
     event_processor_class = LocustEventDispatcher
     feature_requester_class = LocustServerFeatureRequester
     update_processor_class = LocustStreamingProcessor
@@ -135,6 +135,12 @@ class LaunchDarklyLocust(Locust):
     def __init__(self, *args, **kwargs):
         super(LaunchDarklyLocust, self).__init__(*args, **kwargs)
         self._ldclient = None
+        if self.base_uri is None:
+            self.base_uri = self.host
+        if self.events_uri is None:
+            self.events_uri = self.host
+        if self.stream_uri is None:
+            self.stream_uri = self.host
 
     def make_config(self):
         return self.config_class(sdk_key=self.sdk_key,
@@ -169,9 +175,6 @@ class LaunchDarklyMobileLocust(LaunchDarklyLocust):
     config_class = MobileConfig
     feature_requester_class=None 
     update_processor_class=None
-    base_uri = os.environ.get('LAUNCHDARKLY_BASE_URI', 'https://app.launchdarkly.com')
-    events_uri = os.environ.get('LAUNCHDARKLY_EVENTS_URI', 'https://events.launchdarkly.com')
-    stream_uri = os.environ.get('LAUNCHDARKLY_STREAM_URI', 'https://clientstream.launchdarkly.com')
 
     def make_client(self):
         return self.client_class(self.user, config=self.make_config())
