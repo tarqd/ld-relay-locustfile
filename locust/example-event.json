@@ -1,0 +1,1 @@
+[{"kind": "identify", "creationDate": 1579126680357, "key": "anonymous", "user": {"anonymous": true, "key": "anonymous"}}, {"kind": "summary", "startDate": 1579126685001, "endDate": 1579126685001, "features": {"api-end-point-1": {"default": null, "counters": [{"count": 1, "value": false, "variation": 1, "version": 2}]}}}]

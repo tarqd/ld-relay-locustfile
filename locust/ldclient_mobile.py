@@ -99,7 +99,6 @@ class MobileLDClient(LDClient):
             log.info("Started LaunchDarkly Client in LDD mode")
 
         self._event_processor = self._make_event_processor(self._config)
-        self._send_event(self._event_factory_default.new_identify_event(user))
         update_processor_ready = threading.Event()
         self._update_processor = self._make_update_processor(self._config, self._store, update_processor_ready)
         self._update_processor.start()
@@ -162,7 +161,7 @@ class MobileLDClient(LDClient):
         :param dict user: attributes of the user to register
         """
         if user is None or user.get('key') is None:
-            log.warning("Missing user or user key when calling identify().")
+            raise Exception("Missing user or user key when calling identify().")
         else:
             self._send_event(self._event_factory_default.new_identify_event(user))
             self.close()

@@ -3,7 +3,10 @@ from ldclient.util import _get_proxy_url, certifi, throw_if_unsuccessful_respons
 from locust.events import request_success, request_failure
 import urllib3
 import time
-from urlparse import urlparse, urlunparse
+try:
+  from urlparse import urlparse, urlunparse
+except ImportError:
+  from urllib.parse import urlparse, urlunparse
 
 def _headers(sdk_key, client='PythonClient', with_auth=True):
   return {'Authorization': sdk_key, 'User-Agent': '{0}/{1}'.format(client, VERSION),
@@ -64,7 +67,6 @@ class LocustPoolManager(urllib3.PoolManager):
         x = urlparse(url)
         name = url
         req_type = method
-        
         if method == 'GET' and (x.path.find('/meval/') == 0  or x.path.find('/users/') > -1 or x.path.find('/eval/') == 0):
           parts = x.path.split('/')
           parts.pop()

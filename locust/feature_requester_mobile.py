@@ -46,15 +46,14 @@ class FeatureRequesterImpl(FeatureRequester):
         method = "GET"
         body = None
         uri = base_uri
-        cache_uri = uri + EVALX_GET + '/' + self.config.user_b64
+        cache_uri = uri + EVALX_GET + '/' + self._config.user_b64
         if self._config.use_report:
           method = 'REPORT'
-          body = self.config.user_json
+          body = self._config.user_json
           hdrs.update({'Content-Type': 'application/json'})
           uri = uri + EVALX_REPORT
         else:
           uri = cache_uri
-
         if self._config.evaluation_reasons:
           uri += '?withReasons=true'
           cache_uri += '?withReasons=true'

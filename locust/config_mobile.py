@@ -72,7 +72,7 @@ class MobileConfig(Config):
     if user is not None:
       self.__user_filtered = self.__user_filter.filter_user_props(user)
       self.__user_json = json.dumps(self.__user_filtered).encode('utf-8')
-      self.__user_b64 = urlsafe_b64encode(self.__user_json)
+      self.__user_b64 = urlsafe_b64encode(self.__user_json).decode('utf-8')
 
 
   def copy_with_new_sdk_key(self, new_sdk_key):
@@ -143,7 +143,7 @@ class MobileConfig(Config):
                   user=new_user)
 
 
-
+  @property
   def evaluation_reasons(self):
     return self.__evaluation_reasons
   @property

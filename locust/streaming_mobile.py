@@ -16,25 +16,24 @@ from ldclient.interfaces import UpdateProcessor
 from sse_client import SSEClient
 from ldclient.util import _stream_headers, log, UnsuccessfulResponseException, http_error_message, is_http_error_recoverable
 from ldclient.versioned_data_kind import FEATURES, SEGMENTS
-from locust_feature_requester import FeatureRequesterImpl
 from locust.events import request_success, request_failure
 
 # allows for up to 5 minutes to elapse without any data sent across the stream. The heartbeats sent as comments on the
 # stream will keep this from triggering
 stream_read_timeout = 5 * 60
 
-STREAM_ALL_PATH = '/all'
+STREAM_PATH= '/meval'
 
 ParsedPath = namedtuple('ParsedPath', ['kind', 'key'])
 
 
-class StreamingUpdateProcessor(Thread, UpdateProcessor):
-    def __init__(self, config, store, ready):
+class MobileStreamingUpdateProcessor(Thread, UpdateProcessor):
+    def __init__(self, config, requester, store, ready):
         Thread.__init__(self)
         self.daemon = True
-        self._uri = config.stream_base_uri + STREAM_ALL_PATH
+        self._uri = config.stream_base_uri + STREAM_PATH + '/' + config.user_b64
         self._config = config
-        self._requester = FeatureRequesterImpl(config)
+        self._requester = requester
         self._store = store
         self._running = False
         self._ready = ready
@@ -50,25 +49,32 @@ class StreamingUpdateProcessor(Thread, UpdateProcessor):
     # Upon any error establishing the stream connection we retry with backoff + jitter.
     # Upon any error processing the results of the stream we reconnect after one second.
     def run(self):
-        log.info("Starting StreamingUpdateProcessor connecting to uri: " + self._uri)
+        log.info("Starting MobileStreamingUpdateProcessor connecting to uri: " + self._uri)
         self._running = True
         while self._running:
             try:
+                init_start = time.time()
                 messages = self._connect()
                 for msg in messages:
                     if not self._running:
                         break
                     message_ok = self.process_message(self._store, self._requester, msg)
                     if message_ok is True and self._ready.is_set() is False:
-                        log.info("StreamingUpdateProcessor initialized ok.")
+                        log.info("MobileStreamingUpdateProcessor initialized ok.")
+                        init_duration = int((time.time() - init_start) * 1000)
+                        request_success.fire(request_type="ld:init", name="mobile", response_time=init_duration, response_length=0)
                         self._ready.set()
             except UnsuccessfulResponseException as e:
                 log.error(http_error_message(e.status, "stream connection"))
+                init_duration = int((time.time() - init_start) * 1000)
+                request_failure.fire(request_type="ld:init", name="mobile", response_time=init_duration, response_length=0, exception=e)
                 if not is_http_error_recoverable(e.status):
                     self._ready.set()  # if client is initializing, make it stop waiting; has no effect if already inited
                     self.stop()
                     break
             except Exception as e:
+                init_duration = int((time.time() - init_start) * 1000)
+                request_failure.fire(request_type="ld:init", name="mobile", response_time=init_duration, response_length=0, exception=e)
                 log.warning("Caught exception. Restarting stream connection after one second. %s" % e)
                 # no stacktrace here because, for a typical connection error, it'll just be a lengthy tour of urllib3 internals
             time.sleep(1)
@@ -95,7 +101,7 @@ class StreamingUpdateProcessor(Thread, UpdateProcessor):
             http_proxy=self._config.http_proxy)
 
     def stop(self):
-        log.info("Stopping StreamingUpdateProcessor")
+        log.info("Stopping MobileStreamingUpdateProcessor")
         self._running = False
 
     def initialized(self):
@@ -106,60 +112,49 @@ class StreamingUpdateProcessor(Thread, UpdateProcessor):
     def process_message(store, requester, msg):
         if msg.event == 'put':
             all_data = json.loads(msg.data)
+
+            for k,v in all_data.items():
+                v['key'] = k
+
             init_data = {
-                FEATURES: all_data['data']['flags'],
-                SEGMENTS: all_data['data']['segments']
+                FEATURES: all_data
             }
-            log.debug("Received put event with %d flags and %d segments",
-                len(init_data[FEATURES]), len(init_data[SEGMENTS]))
+            log.debug("Received put event with %d flags",
+                len(init_data[FEATURES]))
             store.init(init_data)
             return True
         elif msg.event == 'patch':
             recv_time = time.time() * 1000
             payload = json.loads(msg.data)
-            path = payload['path']
-            obj = payload['data']
-            log.debug("Received patch event for %s, New version: [%d]", path, obj.get("version"))
-            target = StreamingUpdateProcessor._parse_path(path)
-            
-            if target is not None:
-                store.upsert(target.kind, obj)
-                if target.kind.namespace == 'features' and target.key == 'locust-heartbeat':
-                    time_start = obj.get('variations', [None])[0]
-                    if time_start is not None:
-                        duration = int(recv_time - time_start)
-                        request_success.fire(request_type='sse:flag-update', name='/all', response_time=duration, response_length=0)
-            else:
-                log.warning("Patch for unknown path: %s", path)
-        elif msg.event == "indirect/patch":
-            path = msg.data
-            log.debug("Received indirect/patch event for %s", path)
-            target = StreamingUpdateProcessor._parse_path(path)
-            if target is not None:
-                store.upsert(target.kind, requester.get_one(target.kind, target.key))
-            else:
-                log.warning("Indirect patch for unknown path: %s", path)
-        elif msg.event == "indirect/put":
-            log.debug("Received indirect/put event")
-            store.init(requester.get_all_data())
+            if payload.get('key') == 'locust-heartbeat':
+                value = int(payload.get('value') or 0)
+                duration = int((recv_time - value))
+                request_success.fire(request_type='sse:flag-update', name='/meval', response_time=duration, response_length=0)
+                
+            log.debug("Received patch event for %s, New version: [%d]", payload.get('key'), payload.get("version"))
+            store.upsert(FEATURES, payload)
+        elif msg.event == 'ping':
+            log.debug('Received ping event')
+            all_data = requester.get_all_data()
+            store.init(all_data)
+            log.debug("Received flags after ping event with %d flags", len(all_data[FEATURES]))
             return True
+            
         elif msg.event == 'delete':
             payload = json.loads(msg.data)
-            path = payload['path']
+            key = payload.get('key')
             # noinspection PyShadowingNames
             version = payload['version']
-            log.debug("Received delete event for %s, New version: [%d]", path, version)
-            target = StreamingUpdateProcessor._parse_path(path)
-            if target is not None:
-                store.delete(target.kind, target.key, version)
-            else:
-                log.warning("Delete for unknown path: %s", path)
+            log.debug("Received delete event for %s, New version: [%d]", key, version)
+            target = ParsedPath(kind = FEATURES, key = key)
+            store.delete(target.kind, target.key, version)
         else:
             log.warning('Unhandled event in stream processor: ' + msg.event)
         return False
 
     @staticmethod
     def _parse_path(path):
+        raise ValueError('not supposed to use this in mobile client stream')
         for kind in [FEATURES, SEGMENTS]:
             if path.startswith(kind.stream_api_path):
                 return ParsedPath(kind = kind, key = path[len(kind.stream_api_path):])
