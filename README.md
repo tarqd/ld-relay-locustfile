@@ -32,7 +32,7 @@ For more information, [read this guide](https://docs.locust.io/en/stable/writing
 
 ## Setup your environment variables
 
-Configure you environment variables like so:
+Configure your environment variables like so:
 
 ```
 LAUNCHDARKLY_MOBILE_KEY=mob-xxxx
@@ -71,6 +71,8 @@ Be sure to expose port 5557-55578 to your slave nodes
 LOCUST_MODE=slave
 LOCUST_MASTER_HOST=<hostname of master>
 ```
+
+For more information, refer to [Locust Documentation](https://docs.locust.io/en/stable/running-locust-docker.html)
 
 
 ## FAQ
