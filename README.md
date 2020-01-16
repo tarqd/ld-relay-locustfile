@@ -41,6 +41,17 @@ LAUNCHDARKLY_HEARTBEAT_PROJECT=my-proj-key
 LAUNCHDARKLY_HEARTBEAT_API_KEY=api-xxxx
 ```
 
+You can also set the `sdk_key` properties on each locust class instead:
+
+```python
+
+class MyLocust(LaunchDarklyMobileLocust):
+  sdk_key="mob-xxx"
+  # or use a different environment variable
+  sdk_key=os.environ.get('SOME_OTHER_ENV')
+```
+
+
 ## Running the tests
 
 - Run locust with `python3 -m locust -f locustfile.py`
