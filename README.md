@@ -21,7 +21,7 @@ This will allow you gather metrics on how long it takes for a flag to propogate 
 
 First off, take a look at `launchdarkly_locust.py`, this file defines the `LaunchDarklyLocust` and `LaunchDarklyMobileLocust` classes that you will be basing your locusts on. 
 
-Now open up `locustfile.py`. You'll see a couple of task sets and locusts that you can modify. Simple edit the task sets to emulate the behavior of your users. The example ones just initialize the client and evaluate random flags.
+Now open up `locustfile.py`. You'll see a couple of task sets and locusts that you can modify. Simply edit the task sets to emulate the behavior of your users. The example ones just initialize the client and evaluate random flags.
 
 If you want to modify the client settings, just set the properties you'd normally pass to `LDClient.Config` as properties on the `LaunchDarklyBasicServer` and `LaunchDarklyBasicMobile` classes.
 
