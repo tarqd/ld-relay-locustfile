@@ -39,6 +39,11 @@ LAUNCHDARKLY_MOBILE_KEY=mob-xxxx
 LAUNCHDARKLY_SDK_KEY=sdk-xxxx
 LAUNCHDARKLY_HEARTBEAT_PROJECT=my-proj-key
 LAUNCHDARKLY_HEARTBEAT_API_KEY=api-xxxx
+LAUNCHDARKLY_BASE_URI=http://ldrelay:8030
+LAUNCHDARKLY_EVENTS_URI=http://ldrelay:8030
+LAUNCHDARKLY_STREAM_URI=http://ldrelay:8030
+LAUNCHDARKLY_MOBILE_KEY=http://ldrelay:8030
+LAUNCHDARKLY_MOBILE_STREAM_URI=http://ldrelay:8030
 ```
 
 You can also set the `sdk_key` properties on each locust class instead:
