@@ -81,6 +81,9 @@ class LaunchDarklyMobileTaskSet(TaskSequence):
         # this simulates a user leaving your application or losing network connectivity
         self.locust.close_client()
 
+    def on_stop(self):
+        self.locust.close_client()
+
 class LaunchDarklyServerTaskSet(TaskSequence):
     wait_time = between(1, 30)
     
@@ -108,6 +111,9 @@ class LaunchDarklyServerTaskSet(TaskSequence):
             self.interrupt()
     @seq_task(3)
     def disconnect(self):
+        self.locust.close_client()
+
+    def on_stop(self):
         self.locust.close_client()
 
 
