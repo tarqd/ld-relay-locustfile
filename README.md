@@ -9,6 +9,21 @@ This is a locust file meant to emulate the load of launchdarkly server and mobil
 
 # Setup
 
+## Prerequisites
+
+If you are running the testing infrastructure outside of Docker you will need to install the dependencies. This project utilizes `Python 3`, and `Locust 0.13.5`. You can install the required version of Locust with:
+
+```
+pip3 install locustio==0.13.5
+```
+
+As with many Python projects you will also need to install the dependencies listed in `requirements.txt`. Enter the `locust` directory and run:
+
+```
+pip3 install -r requirements.txt
+```
+
+
 ## Optional: Configure a flag heartbeat
 
 This will allow you gather metrics on how long it takes for a flag to propogate to clients. If you do not follow these steps, you will not get these metrics in Locust but the tests will still run.
@@ -19,7 +34,7 @@ This will allow you gather metrics on how long it takes for a flag to propogate 
 
 ## Modify locustfile.py
 
-First off, take a look at `launchdarkly_locust.py`, this file defines the `LaunchDarklyLocust` and `LaunchDarklyMobileLocust` classes that you will be basing your locusts on. 
+First off, take a look at `launchdarkly_locust.py`, this file defines the `LaunchDarklyLocust` and `LaunchDarklyMobileLocust` classes that you will be basing your locusts on.
 
 Now open up `locustfile.py`. You'll see a couple of task sets and locusts that you can modify. Simply edit the task sets to emulate the behavior of your users. The example ones just initialize the client and evaluate random flags.
 
