@@ -19,7 +19,7 @@ This will allow you gather metrics on how long it takes for a flag to propogate 
 
 ## Modify locustfile.py
 
-First off, take a look at `launchdarkly_locust.py`, this file defines the `LaunchDarklyLocust` and `LaunchDarklyMobileLocust` classes that you will be basing your locusts on. 
+First off, take a look at `launchdarkly_locust.py`, this file defines the `LaunchDarklyLocust` and `LaunchDarklyMobileLocust` classes that you will be basing your locusts on.
 
 Now open up `locustfile.py`. You'll see a couple of task sets and locusts that you can modify. Simply edit the task sets to emulate the behavior of your users. The example ones just initialize the client and evaluate random flags.
 
@@ -42,7 +42,6 @@ LAUNCHDARKLY_HEARTBEAT_API_KEY=api-xxxx
 LAUNCHDARKLY_BASE_URI=http://ldrelay:8030
 LAUNCHDARKLY_EVENTS_URI=http://ldrelay:8030
 LAUNCHDARKLY_STREAM_URI=http://ldrelay:8030
-LAUNCHDARKLY_MOBILE_KEY=http://ldrelay:8030
 LAUNCHDARKLY_MOBILE_STREAM_URI=http://ldrelay:8030
 ```
 
