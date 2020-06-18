@@ -19,7 +19,7 @@ This will allow you gather metrics on how long it takes for a flag to propogate 
 
 ## Modify locustfile.py
 
-First off, take a look at `launchdarkly_locust.py`, this file defines the `LaunchDarklyLocust` and `LaunchDarklyMobileLocust` classes that you will be basing your locusts on. 
+First off, take a look at `launchdarkly_locust.py`, this file defines the `LaunchDarklyLocust` and `LaunchDarklyMobileLocust` classes that you will be basing your locusts on.
 
 Now open up `locustfile.py`. You'll see a couple of task sets and locusts that you can modify. Simply edit the task sets to emulate the behavior of your users. The example ones just initialize the client and evaluate random flags.
 
@@ -62,12 +62,18 @@ class MyLocust(LaunchDarklyMobileLocust):
 - Run locust with `python3 -m locust -f locustfile.py`
 - Open `https://localhost:8089` and enter your desired users and set the host to your instance of LD-Relay
 
-## Running in docker
+## Running in Docker
 
 ```
 docker build -t locust-ld-relay .
 docker run -p 8089:8089/tcp -e TARGET_URL=http://ldrelay:8030 --env-file=env locust-ld-relay:latest
 ```
+
+## Locally testing with Docker compose
+
+A simple `docker-compose.yml` is provided for local testing. This is the quickest way to get started, however it will not likely be wholly representative of your infrastructure. To get started set the required environment variables `LAUNCHDARKLY_SDK_KEY`, and `LAUNCHDARKLY_MOBILE_KEY`. The variables `LAUNCHDARKLY_HEARTBEAT_PROJECT`, and ` LAUNCHDARKLY_HEARTBEAT_API_KEY` are supported but optional.
+
+Once your environment is configured run `docker-compose up`, and connect to `http://localhost:8089` in your browser.
 
 ## Running in Distributed mode
 
