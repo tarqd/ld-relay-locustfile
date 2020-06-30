@@ -2,7 +2,7 @@ import os
 import inspect
 import copy
 
-from locust import Locust
+from locust import User,between
 
 from ldclient import LDClient, Config
 from ldclient_mobile import MobileLDClient, MobileConfig
@@ -12,7 +12,8 @@ from locust_feature_requester import FeatureRequesterImpl as LocustServerFeature
 from locust_streaming import StreamingUpdateProcessor as LocustStreamingProcessor
 
 
-class LaunchDarklyLocust(Locust):
+class LaunchDarklySDKUser(User):
+    abstract = True
     sdk_key = os.environ.get('LAUNCHDARKLY_SDK_KEY')
     default_user = {"anonymous": True, "key": "anonymous"}
     config_class = Config
@@ -23,9 +24,10 @@ class LaunchDarklyLocust(Locust):
     event_processor_class = LocustEventDispatcher
     feature_requester_class = LocustServerFeatureRequester
     update_processor_class = LocustStreamingProcessor
+    wait_time = between(1,2)
 
     def __init__(self, *args, **kwargs):
-        super(LaunchDarklyLocust, self).__init__(*args, **kwargs)
+        super(LaunchDarklySDKUser, self).__init__(*args, **kwargs)
         self._ldclient = None
         self._user = None
         if self.base_uri is None:
@@ -44,8 +46,8 @@ class LaunchDarklyLocust(Locust):
     # you can override this property if you to generate random users
     # for each locust instance    
     @property
-    def user(self):
-      if self._user == None:
+    def lduser(self):
+      if self._user is None:
         self._user = copy.deepcopy(self.generate_user())
       return self._user
 
@@ -79,7 +81,9 @@ class LaunchDarklyLocust(Locust):
         finally:
             self._ldclient = None
 
-class LaunchDarklyMobileLocust(LaunchDarklyLocust):
+
+class LaunchDarklyMobileSDKUser(LaunchDarklySDKUser):
+    abstract = True
     sdk_key = os.environ.get('LAUNCHDARKLY_MOBILE_KEY')
     stream_uri = os.environ.get('LAUNCHDARKLY_MOBILE_STREAM_URI')
     client_class = MobileLDClient
@@ -90,5 +94,5 @@ class LaunchDarklyMobileLocust(LaunchDarklyLocust):
 
     def make_client(self, user=None):
         if user is None:
-          user = self.user
+          user = self.lduser
         return self.client_class(user, config=self.make_config())
