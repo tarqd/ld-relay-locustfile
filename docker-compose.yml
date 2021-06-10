@@ -4,8 +4,8 @@ services:
   ldrelay:
     image: launchdarkly/ld-relay
     environment:
-      - LD_ENV_BENCHMARK=${LAUNCHDARKLY_SDK_KEY}
-      - LD_MOBILE_KEY_BENCHMARK=${LAUNCHDARKLY_MOBILE_KEY}
+      - LD_ENV_BENCHMARK=${LD_SDK_KEY}
+      - LD_MOBILE_KEY_BENCHMARK=${LD_MOBILE_KEY}
       - USE_EVENTS=true
     ports:
       - "8030:8039"
@@ -16,15 +16,11 @@ services:
       context: .
       dockerfile: Dockerfile
     environment:
-      - LAUNCHDARKLY_SDK_KEY
-      - LAUNCHDARKLY_MOBILE_KEY
-      - LAUNCHDARKLY_HEARTBEAT_PROJECT
-      - LAUNCHDARKLY_HEARTBEAT_API_KEY
-      - TARGET_URL=http://ldrelay:8030
-      - LAUNCHDARKLY_BASE_URI=http://ldrelay:8030
-      - LAUNCHDARKLY_EVENTS_URI=http://ldrelay:8030
-      - LAUNCHDARKLY_STREAM_URI=http://ldrelay:8030
-      - LAUNCHDARKLY_MOBILE_STREAM_URI=http://ldrelay:8030
+      - LD_SDK_KEY=${LD_SDK_KEY}
+      - LD_MOBILE_KEY=${LD_MOBILE_KEY}
+      - LD_PROJECT_KEY=${LD_PROJECT_KEY}
+      - LD_API_KEY=${LD_API_KEY}
+      - LOCUST_HOST=http://ldrelay:8030
     depends_on:
       - ldrelay
     ports:

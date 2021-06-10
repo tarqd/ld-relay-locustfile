@@ -4,6 +4,7 @@ import json
 from base64 import urlsafe_b64encode
 from ldclient.event_processor import DefaultEventProcessor
 from ldclient.feature_store import InMemoryFeatureStore
+from ldclient.util import log
 
 class MobileConfig(Config):
   def __init__(self,sdk_key=None, user=None, use_report=False, evaluation_reasons=False,

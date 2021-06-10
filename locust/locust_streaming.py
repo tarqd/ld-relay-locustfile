@@ -17,8 +17,9 @@ from sse_client import SSEClient
 from ldclient.util import _stream_headers, log, UnsuccessfulResponseException, http_error_message, is_http_error_recoverable
 from ldclient.versioned_data_kind import FEATURES, SEGMENTS
 from locust_feature_requester import FeatureRequesterImpl
-from locust.events import request_success, request_failure
-
+from locust import events
+request_success = events.request_success
+request_failure = events.request_failure
 # allows for up to 5 minutes to elapse without any data sent across the stream. The heartbeats sent as comments on the
 # stream will keep this from triggering
 stream_read_timeout = 5 * 60
@@ -52,9 +53,9 @@ class StreamingUpdateProcessor(Thread, UpdateProcessor):
     def run(self):
         log.info("Starting StreamingUpdateProcessor connecting to uri: " + self._uri)
         self._running = True
+        init_start = time.time()
         while self._running:
             try:
-                init_start = time.time()
                 messages = self._connect()
                 for msg in messages:
                     if not self._running:
@@ -63,19 +64,23 @@ class StreamingUpdateProcessor(Thread, UpdateProcessor):
                     if message_ok is True and self._ready.is_set() is False:
                         log.info("StreamingUpdateProcessor initialized ok.")
                         init_duration = int((time.time() - init_start) * 1000)
-                        request_success.fire(request_type="ld:init", name="server", response_time=init_duration, response_length=0)
+                        request_success.fire(request_type="ld:init", name="server:streaming", response_time=init_duration, response_length=0)
                         self._ready.set()
             except UnsuccessfulResponseException as e:
                 log.error(http_error_message(e.status, "stream connection"))
-                init_duration = int((time.time() - init_start) * 1000)
-                request_failure.fire(request_type="ld:init", name="server", response_time=init_duration, response_length=0, exception=e)
+
                 if not is_http_error_recoverable(e.status):
+                    # if it's not recoverable, log a failure to init
+                    init_duration = int((time.time() - init_start) * 1000)
+                    request_failure.fire(request_type="ld:init", name="server:streaming", response_time=init_duration, response_length=0, exception=e)
                     self._ready.set()  # if client is initializing, make it stop waiting; has no effect if already inited
                     self.stop()
                     break
             except Exception as e:
-                init_duration = int((time.time() - init_start) * 1000)
-                request_failure.fire(request_type="ld:init", name="server", response_time=init_duration, response_length=0, exception=e)
+                # only log as init failure if as have not init'd
+                if self._ready.is_set() is False:
+                    init_duration = int((time.time() - init_start) * 1000)
+                    request_failure.fire(request_type="ld:init", name="server:streaming", response_time=init_duration, response_length=0, exception=e)
                 log.warning("Caught exception. Restarting stream connection after one second. %s" % e)
                 # no stacktrace here because, for a typical connection error, it'll just be a lengthy tour of urllib3 internals
             time.sleep(1)

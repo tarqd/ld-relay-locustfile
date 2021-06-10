@@ -1,6 +1,6 @@
 from ldclient.version import VERSION
 from ldclient.util import _get_proxy_url, certifi, throw_if_unsuccessful_response, UnsuccessfulResponseException
-from locust.events import request_success, request_failure
+from locust import events
 import urllib3
 import time
 try:
@@ -49,12 +49,12 @@ class LocustProxyPoolManager(urllib3.ProxyManager):
             content_len = len(resp.data or b"")
           throw_if_unsuccessful_response(resp)
         except UnsuccessfulResponseException as e:
-          request_failure.fire(request_type=req_type, name=name, exception=e, response_length=content_len, response_time=int( (time.time() - start_time) * 1000 ))
+          events.request_failure.fire(request_type=req_type, name=name, exception=e, response_length=content_len, response_time=int( (time.time() - start_time) * 1000 ))
           return resp
         except Exception as e:
-          request_failure.fire(request_type=req_type, name=name, exception=e, response_length=content_len, response_time=int( (time.time() - start_time) * 1000 ))
+          events.request_failure.fire(request_type=req_type, name=name, exception=e, response_length=content_len, response_time=int( (time.time() - start_time) * 1000 ))
           raise e
-        request_success.fire(request_type=req_type, name=name, response_length=content_len, response_time=int( (time.time() - start_time) * 1000 ))
+        events.request_success.fire(request_type=req_type, name=name, response_length=content_len, response_time=int( (time.time() - start_time) * 1000 ))
         return resp
 
 class LocustPoolManager(urllib3.PoolManager):
@@ -90,12 +90,12 @@ class LocustPoolManager(urllib3.PoolManager):
             content_len = len(resp.data or b"")
           throw_if_unsuccessful_response(resp)
         except UnsuccessfulResponseException as e:
-          request_failure.fire(request_type=req_type, name=name, exception=e, response_length=content_len, response_time=int( (time.time() - start_time) * 1000 ))
+          events.request_failure.fire(request_type=req_type, name=name, exception=e, response_length=content_len, response_time=int( (time.time() - start_time) * 1000 ))
           return resp
         except Exception as e:
-          request_failure.fire(request_type=req_type, name=name, exception=e, response_length=content_len, response_time=int( (time.time() - start_time) * 1000 ))
+          events.request_failure.fire(request_type=req_type, name=name, exception=e, response_length=content_len, response_time=int( (time.time() - start_time) * 1000 ))
           raise e
-        request_success.fire(request_type=req_type, name=name, response_length=content_len, response_time=int( (time.time() - start_time) * 1000 ))
+        events.request_success.fire(request_type=req_type, name=name, response_length=content_len, response_time=int( (time.time() - start_time) * 1000 ))
         return resp
 
 def create_http_pool_manager(num_pools=1, verify_ssl=False, target_base_uri=None, force_proxy=None):
