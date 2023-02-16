@@ -34,7 +34,7 @@ This will allow you gather metrics on how long it takes for a flag to propogate 
 
 ## Modify locustfile.py
 
-First off, take a look at `launchdarkly_locust.py`, this file defines the `LaunchDarklyLocust` and `LaunchDarklyMobileLocust` classes that you will be basing your locusts on.
+First off, take a look at `launchdarkly_locust.py`, this file defines the `LaunchDarklySDKUser` and `LaunchDarklyMobileSDKUser` classes that you will be basing your locusts on.
 
 Now open up `locustfile.py`. You'll see a couple of task sets and locusts that you can modify. Simply edit the task sets to emulate the behavior of your users. The example ones just initialize the client and evaluate random flags.
 
@@ -64,7 +64,7 @@ You can also set the `sdk_key` properties on each locust class instead:
 
 ```python
 
-class MyLocust(LaunchDarklyMobileLocust):
+class MyLocust(LaunchDarklyMobileSDKUser):
   sdk_key="mob-xxx"
   # or use a different environment variable
   sdk_key=os.environ.get('SOME_OTHER_ENV')
@@ -91,7 +91,7 @@ Once your environment is configured run `docker-compose up`, and connect to `htt
 
 ## Running in Distributed mode
 
-You can test with large amounts of users by using multiple locust nodes. Simply configure the masters and slaves with the following env variables:
+You can test with large amounts of users by using multiple locust nodes. Simply configure the masters and workers with the following env variables:
 
 ### Master
 
@@ -99,12 +99,12 @@ You can test with large amounts of users by using multiple locust nodes. Simply 
 LOCUST_MODE=master
 ```
 
-Be sure to expose port 5557-55578 to your slave nodes
+Be sure to expose port 5557-55578 to your worker nodes
 
-### Slaves
+### Workers
 
 ```
-LOCUST_MODE=slave
+LOCUST_MODE=worker
 LOCUST_MASTER_HOST=<hostname of master>
 ```
 

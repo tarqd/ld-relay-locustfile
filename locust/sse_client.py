@@ -15,7 +15,9 @@ import urllib3
 from util import create_http_pool_manager, clean_name
 from ldclient.util import log
 from ldclient.util import throw_if_unsuccessful_response
-from locust.events import request_success, request_failure
+from locust import events
+request_success = events.request_success
+request_failure = events.request_failure
 import time
 # Technically, we should support streams that mix line endings.  This regex,
 # however, assumes that a system will provide consistent line endings.
