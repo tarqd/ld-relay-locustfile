@@ -83,6 +83,42 @@ docker build -t locust-ld-relay .
 docker run -p 8089:8089/tcp -e TARGET_URL=http://ldrelay:8030 --env-file=env locust-ld-relay:latest
 ```
 
+### Connecting to remote machine from the Docker container 
+Use `--add-host` to update the container `/etc/hosts` hostname mapping
+1. Run the command.
+```
+ docker run -p 8089:8089/tcp \
+   --add-host="ldrelay:100.x.x.x" \
+   -e TARGET_URL=http://ldrelay:8030 \
+   --env-file=env \
+  locust-ld-relay:latest \
+```
+
+
+### Connecting to host machine from the Docker container 
+>**NOTE:**  Required version >= 18.0.3
+
+1. Configure your env file, to use the following URI
+
+```
+....
+
+LAUNCHDARKLY_BASE_URI=http://host.docker.internal:8030
+LAUNCHDARKLY_EVENTS_URI=http://host.docker.internal:8030
+LAUNCHDARKLY_STREAM_URI=http://host.docker.internal:8030
+LAUNCHDARKLY_MOBILE_STREAM_URI=http://host.docker.internal:8030
+
+```
+
+2. Run the command.
+```
+ docker run -p 8089:8089/tcp \
+   --add-host=host.docker.internal:host-gateway \
+   -e TARGET_URL=http://host.docker.internal:8030 \
+   --env-file=env \
+  locust-ld-relay:latest \
+```
+
 ## Locally testing with Docker compose
 
 A simple `docker-compose.yml` is provided for local testing. This is the quickest way to get started, however it will not likely be wholly representative of your infrastructure. To get started set the required environment variables `LAUNCHDARKLY_SDK_KEY`, and `LAUNCHDARKLY_MOBILE_KEY`. The variables `LAUNCHDARKLY_HEARTBEAT_PROJECT`, and ` LAUNCHDARKLY_HEARTBEAT_API_KEY` are supported but optional.
