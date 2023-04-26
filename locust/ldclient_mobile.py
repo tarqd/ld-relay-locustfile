@@ -59,27 +59,27 @@ class _FeatureStoreClientWrapper(FeatureStore):
         return self.store.initialized
 
 class MobileLDClient(LDClient):
-  def __init__(self, user, sdk_key=None, config=None, start_wait=5):
+  def __init__(self, context, mobile_key=None, config=None, start_wait=5):
         """Constructs a new LDClient instance.
         :param string sdk_key: the SDK key for your LaunchDarkly environment
         :param ldclient.config.Config config: optional custom configuration
         :param float start_wait: the number of seconds to wait for a successful connection to LaunchDarkly
         """
 
-        if user is None:
-          raise Exception("user is required for mobile sdk")
+        if context is None:
+          raise Exception("context is required for mobile sdk")
     
-        if config is not None and config.sdk_key is not None and sdk_key is not None:
-            raise Exception("LaunchDarkly client init received both sdk_key and config with sdk_key. "
+        if config is not None and config.mobile_key is not None and mobile_key is not None:
+            raise Exception("LaunchDarkly client init received both mobile_key and config with mobile_key. "
                             "Only one of either is expected")
 
         
 
-        if sdk_key is not None:
-            log.warning("Deprecated sdk_key argument was passed to init. Use config object instead.")
-            self._config = MobileConfig(sdk_key=sdk_key)
+        if mobile_key is not None:
+            log.warning("Deprecated mobile_key argument was passed to init. Use config object instead.")
+            self._config = MobileConfig(mobile_key=mobile_key)
         else:
-            self._config = config.copy_with_new_user(user) or MobileConfig.default().copy_with_new_user(user=user)
+            self._config = config.copy_with_new_context(context) or MobileConfig.default().copy_with_new_context(context=context)
         
         
         self._config._validate()
@@ -147,25 +147,27 @@ class MobileLDClient(LDClient):
           numeric custom metrics. Can be omitted if this event is used by only non-numeric metrics.
           This field will also be returned as part of the custom event for Data Export.
         """
-        user = self._config.user
-        if user is None or user.get('key') is None:
-            log.warning("Missing user or user key when calling track().")
-        else:
-            self._send_event(self._event_factory_default.new_custom_event(event_name, user, data, metric_value))
+        context = self._config.context
+        # TODO: Fix this check
+        #if user is None or user.get('key') is None:
+        #   log.warning("Missing user or user key when calling track().")
+        #else:
+        self._send_event(self._event_factory_default.new_custom_event(event_name, context, data, metric_value))
 
-  def identify(self, user):
+  def identify(self, context):
         """Registers the user.
         This simply creates an analytics event that will transmit the given user properties to
         LaunchDarkly, so that the user will be visible on your dashboard even if you have not
         evaluated any flags for that user. It has no other effect.
         :param dict user: attributes of the user to register
         """
-        if user is None or user.get('key') is None:
-            raise Exception("Missing user or user key when calling identify().")
-        else:
-            self._send_event(self._event_factory_default.new_identify_event(user))
-            self.close()
-            self.__init__(user, config=self._config)
+        # TODO: Fix this check
+        #if user is None or user.get('key') is None:
+        #    raise Exception("Missing user or user key when calling identify().")
+        #else:
+        self._send_event(self._event_factory_default.new_identify_event(context))
+        self.close()
+        self.__init__(context, config=self._config)
 
   def toggle(self, key, default):
         """Deprecated synonym for :func:`variation()`.
@@ -202,7 +204,7 @@ class MobileLDClient(LDClient):
         return self._evaluate_internal(key, default, self._event_factory_with_reasons)
 
   def _evaluate_internal(self, key, default, event_factory):
-        user = self._config.user
+        context = self._config.context
         default = self._config.get_default(key, default)
 
         if self._config.offline:
@@ -215,11 +217,12 @@ class MobileLDClient(LDClient):
                 log.warning("Feature Flag evaluation attempted before client has initialized! Feature store unavailable - returning default: "
                          + str(default) + " for feature key: " + key)
                 reason = error_reason('CLIENT_NOT_READY')
-                self._send_event(event_factory.new_unknown_flag_event(key, user, default, reason))
+                self._send_event(event_factory.new_unknown_flag_event(key, context, default, reason))
                 return EvaluationDetail(default, None, reason)
         
-        if user is not None and user.get('key', "") == "":
-            raise ValueError('user must have a key')
+        # TODO: Fix this check
+        #if context is not None and user.get('key', "") == "":
+        #    raise ValueError('user must have a key')
 
         try:
             flag = self._store.get(FEATURES, key, lambda x: x)
@@ -227,37 +230,37 @@ class MobileLDClient(LDClient):
             log.error("Unexpected error while retrieving feature flag \"%s\": %s" % (key, repr(e)))
             log.debug(traceback.format_exc())
             reason = error_reason('EXCEPTION')
-            self._send_event(event_factory.new_unknown_flag_event(key, user, default, reason))
+            self._send_event(event_factory.new_unknown_flag_event(key, context, default, reason))
             return EvaluationDetail(default, None, reason)
         if not flag:
             reason = error_reason('FLAG_NOT_FOUND')
-            self._send_event(event_factory.new_unknown_flag_event(key, user, default, reason))
+            self._send_event(event_factory.new_unknown_flag_event(key, context, default, reason))
             return EvaluationDetail(default, None, reason)
         else:
 
             try:
-                result = evaluate(flag, user, self._store, event_factory)
+                result = evaluate(flag, self._store, event_factory)
                 for event in result.events or []:
                     self._send_event(event)
                 detail = result.detail
                 if detail.is_default_value():
                     detail = EvaluationDetail(default, None, detail.reason)
-                self._send_event(event_factory.new_eval_event(flag, user, detail, default))
+                self._send_event(event_factory.new_eval_event(flag, context, detail, default))
                 return detail
             except Exception as e:
                 log.error("Unexpected error while evaluating feature flag \"%s\": %s" % (key, repr(e)))
                 log.debug(traceback.format_exc())
                 reason = error_reason('EXCEPTION')
-                self._send_event(event_factory.new_default_event(flag, user, default, reason))
+                self._send_event(event_factory.new_default_event(flag, context, default, reason))
                 return EvaluationDetail(default, None, reason)
   def all_flags(self):
-        """Returns all feature flag values for the given user.
+        """Returns all feature flag values for the given context.
         
         This method is deprecated - please use :func:`all_flags_state()` instead. Current versions of the
         client-side SDK will not generate analytics events correctly if you pass the result of ``all_flags``.
-        :param dict user: the end user requesting the feature flags
+        :param dict context: the context requesting the feature flags
         :return: a dictionary of feature flag keys to values; returns None if the client is offline,
-          has not been initialized, or the user is None or has no key
+          has not been initialized, or the context is None or has no key
         :rtype: dict
         """
         state = self.all_flags_state()
@@ -271,7 +274,6 @@ class MobileLDClient(LDClient):
         `Bootstrapping <https://docs.launchdarkly.com/docs/js-sdk-reference#section-bootstrapping>`_.
         
         This method does not send analytics events back to LaunchDarkly.
-        :param dict user: the end user requesting the feature flags
         :param kwargs: optional parameters affecting how the state is computed - see below
         :Keyword Arguments:
           * **client_side_only** (*boolean*) --
@@ -287,7 +289,7 @@ class MobileLDClient(LDClient):
           if the client is offline, has not been initialized, or the user is None or has no key)
         :rtype: FeatureFlagsState
         """
-        user = self._config.user
+        context = self._config.context
         if self._config.offline:
             log.warning("all_flags_state() called, but client is in offline mode. Returning empty state")
             return FeatureFlagsState(False)
@@ -298,10 +300,10 @@ class MobileLDClient(LDClient):
             else:
                 log.warning("all_flags_state() called before client has finished initializing! Feature store unavailable - returning empty state")
                 return FeatureFlagsState(False)
-
-        if user is None or user.get('key') is None:
-            log.warning("User or user key is None when calling all_flags_state(). Returning empty state.")
-            return FeatureFlagsState(False)
+        # TODO: fix this check
+        #if user is None or user.get('key') is None:
+        #    log.warning("User or user key is None when calling all_flags_state(). Returning empty state.")
+        #    return FeatureFlagsState(False)
         
         state = FeatureFlagsState(True)
         with_reasons = kwargs.get('with_reasons', False)
@@ -316,7 +318,7 @@ class MobileLDClient(LDClient):
         
         for key, flag in flags_map.items():
             try:
-                detail = evaluate(flag, user, self._store, self._event_factory_default).detail
+                detail = evaluate(flag, self._store, self._event_factory_default).detail
                 state.add_flag(flag, detail.value, detail.variation_index,
                     detail.reason if with_reasons else None, details_only_if_tracked)
             except Exception as e:

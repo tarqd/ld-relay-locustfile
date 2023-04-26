@@ -31,7 +31,7 @@ class MobileStreamingUpdateProcessor(Thread, UpdateProcessor):
     def __init__(self, config, requester, store, ready):
         Thread.__init__(self)
         self.daemon = True
-        self._uri = config.stream_base_uri + STREAM_PATH + '/' + config.user_b64
+        self._uri = config.stream_base_uri + STREAM_PATH + '/' + config.context_base64
         self._config = config
         self._requester = requester
         self._store = store

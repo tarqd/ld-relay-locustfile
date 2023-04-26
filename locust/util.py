@@ -3,6 +3,7 @@ from ldclient.util import _get_proxy_url, certifi, throw_if_unsuccessful_respons
 from locust.events import request_success, request_failure
 import urllib3
 import time
+import re
 try:
   from urlparse import urlparse, urlunparse
 except ImportError:
@@ -12,13 +13,15 @@ def _headers(sdk_key, client='PythonClient', with_auth=True):
   return {'Authorization': sdk_key, 'User-Agent': '{0}/{1}'.format(client, VERSION),
             'Content-Type': "application/json"}
 
+
+
+cleanRegex = r"^(?P<prefix>/(m?sdk/)?m?evalx?/[^/]*(/(users|contexts))?)/(?P<b64>[^/$?]+)"
+cleanSubst = "\\g<prefix>/[context]"
+
 def clean_name(method, url):
   x = urlparse(url)
-  if method == 'GET' and (x.path.find('/meval/') == 0  or x.path.find('/users/') > -1 or x.path.find('/eval/') == 0):
-    parts = x.path.split('/')
-    parts.pop()
-    parts.append('[user]')
-    newpath = '/'.join(parts)
+  if method == 'GET' and re.match(cleanRegex, x.path) :
+    newpath = re.sub(cleanRegex, cleanSubst, x.path)
     x = x._replace(path=newpath)
     return urlunparse(x)
   return url
@@ -35,7 +38,7 @@ class LocustProxyPoolManager(urllib3.ProxyManager):
         name = clean_name(method, url)
         req_type = method
         
-        if is_stream and kw.get('headers', {}).get('Accept', 'lol') == 'text/event-stream':
+        if is_stream and kw.get('headers', {}).get('Accept') == 'text/event-stream':
           req_type = 'sse:connect'
         
         resp = None
@@ -64,19 +67,13 @@ class LocustPoolManager(urllib3.PoolManager):
     def urlopen(self, method, url, redirect=True, **kw):
         is_stream = not kw.get('preload_content', True)
         start_time = time.time()
-        x = urlparse(url)
-        name = url
+        
+        name = clean_name(method, url)
         req_type = method
-        if method == 'GET' and (x.path.find('/meval/') == 0  or x.path.find('/users/') > -1 or x.path.find('/eval/') == 0):
-          parts = x.path.split('/')
-          parts.pop()
-          parts.append('[user]')
-          newpath = '/'.join(parts)
-          x = x._replace(path=newpath)
-          name = urlunparse(x)
+        
         
 
-        if is_stream and kw.get('headers', {}).get('Accept', 'lol') == 'text/event-stream':
+        if is_stream and kw.get('headers', {}).get('Accept') == 'text/event-stream':
           req_type = 'sse:connect'
         
         resp = None

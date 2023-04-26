@@ -14,11 +14,11 @@ from util import _headers, create_http_pool_manager
 from ldclient.util import log
 from ldclient.util import throw_if_unsuccessful_response
 from ldclient.versioned_data_kind import FEATURES, SEGMENTS
-from ldclient.user_filter import UserFilter
+
 from base64 import urlsafe_b64encode
 
-EVALX_GET = '/msdk/evalx/users'
-EVALX_REPORT = '/msdk/evalx/user'
+EVALX_GET = '/msdk/evalx/contexts'
+EVALX_REPORT = '/msdk/evalx/context'
 
 CacheEntry = namedtuple('CacheEntry', ['data', 'etag'])
 
@@ -46,7 +46,7 @@ class FeatureRequesterImpl(FeatureRequester):
         method = "GET"
         body = None
         uri = base_uri
-        cache_uri = uri + EVALX_GET + '/' + self._config.user_b64
+        cache_uri = uri + EVALX_GET + '/' + self._config.context_base64
         if self._config.use_report:
           method = 'REPORT'
           body = self._config.user_json
