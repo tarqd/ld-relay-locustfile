@@ -8,12 +8,11 @@ from ldclient.flag import __USER_ATTRS_TO_STRINGIFY_FOR_EVALUATION__, EvalResult
 
 
 
-def evaluate(flag, user, store, event_factory):
-    sanitized_user = stringify_attrs(user, __USER_ATTRS_TO_STRINGIFY_FOR_EVALUATION__)
+def evaluate(flag, store, event_factory):
     value = flag.get('value')
     version = flag.get('version')
     variation_index = flag.get('variation')
     reason = flag.get('reason')
     detail = EvaluationDetail(value, variation_index, reason)
-
+    # TODO: generate evaluation event
     return EvalResult(detail = detail, events = None)

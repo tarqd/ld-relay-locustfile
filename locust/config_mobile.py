@@ -1,283 +1,447 @@
-from ldclient.config import Config
-from ldclient.user_filter import UserFilter
-import json
-from base64 import urlsafe_b64encode
-from ldclient.event_processor import DefaultEventProcessor
+"""
+This submodule contains the :class:`Config` class for custom configuration of the SDK client.
+
+Note that the same class can also be imported from the ``ldclient.client`` submodule.
+"""
+
+from typing import Optional, Callable, List, Set
+
 from ldclient.feature_store import InMemoryFeatureStore
+from ldclient.impl.util import log, validate_application_info
+from ldclient.interfaces import EventProcessor, FeatureStore, UpdateProcessor
+from ldclient import Context
 
-class MobileConfig(Config):
-  def __init__(self,sdk_key=None, user=None, use_report=False, evaluation_reasons=False,
-                 base_uri='https://app.launchdarkly.com',
-                 events_uri='https://mobile.launchdarkly.com',
-                 connect_timeout=10,
-                 read_timeout=15,
-                 events_max_pending=10000,
-                 flush_interval=5,
-                 stream_uri='https://clientstream.launchdarkly.com',
-                 stream=True,
-                 verify_ssl=True,
-                 defaults=None,
-                 send_events=None,
-                 events_enabled=True,
-                 update_processor_class=None,
-                 poll_interval=30,
-                 use_ldd=False,
-                 feature_store=None,
+from base64 import urlsafe_b64encode
+
+GET_LATEST_FEATURES_PATH = '/sdk/latest-flags'
+STREAM_FLAGS_PATH = '/flags'
+
+
+class HTTPConfig:
+    """Advanced HTTP configuration options for the SDK client.
+
+    This class groups together HTTP/HTTPS-related configuration properties that rarely need to be changed.
+    If you need to set these, construct an ``HTTPConfig`` instance and pass it as the ``http`` parameter when
+    you construct the main :class:`Config` for the SDK client.
+    """
+    def __init__(self,
+                 connect_timeout: float=10,
+                 read_timeout: float=15,
+                 http_proxy: Optional[str]=None,
+                 ca_certs: Optional[str]=None,
+                 cert_file: Optional[str]=None,
+                 disable_ssl_verification: bool=False):
+        """
+        :param connect_timeout: The connect timeout for network connections in seconds.
+        :param read_timeout: The read timeout for network connections in seconds.
+        :param http_proxy: Use a proxy when connecting to LaunchDarkly. This is the full URI of the
+          proxy; for example: http://my-proxy.com:1234. Note that unlike the standard ``http_proxy`` environment
+          variable, this is used regardless of whether the target URI is HTTP or HTTPS (the actual LaunchDarkly
+          service uses HTTPS, but a Relay Proxy instance could use HTTP). Setting this Config parameter will
+          override any proxy specified by an environment variable, but only for LaunchDarkly SDK connections.
+        :param ca_certs: If using a custom certificate authority, set this to the file path of the
+          certificate bundle.
+        :param cert_file: If using a custom client certificate, set this to the file path of the
+          certificate.
+        :param disable_ssl_verification: If true, completely disables SSL verification and certificate
+          verification for secure requests. This is unsafe and should not be used in a production environment;
+          instead, use a self-signed certificate and set ``ca_certs``.
+        """
+        self.__connect_timeout = connect_timeout
+        self.__read_timeout = read_timeout
+        self.__http_proxy = http_proxy
+        self.__ca_certs = ca_certs
+        self.__cert_file = cert_file
+        self.__disable_ssl_verification = disable_ssl_verification
+
+    @property
+    def connect_timeout(self) -> float:
+        return self.__connect_timeout
+
+    @property
+    def read_timeout(self) -> float:
+        return self.__read_timeout
+
+    @property
+    def http_proxy(self) -> Optional[str]:
+        return self.__http_proxy
+
+    @property
+    def ca_certs(self) -> Optional[str]:
+        return self.__ca_certs
+
+    @property
+    def cert_file(self) -> Optional[str]:
+        return self.__cert_file
+
+    @property
+    def disable_ssl_verification(self) -> bool:
+        return self.__disable_ssl_verification
+
+class Config:
+    """Advanced configuration options for the SDK client.
+
+    To use these options, create an instance of ``Config`` and pass it to either :func:`ldclient.set_config()`
+    if you are using the singleton client, or the :class:`ldclient.client.LDClient` constructor otherwise.
+    """
+    def __init__(self,
+                 mobile_key: str,
+                 context: Context,
+                 base_uri: str='https://clientsdk.launchdarkly.com',
+                 events_uri: str='https://events.launchdarkly.com',
+                 events_max_pending: int=10000,
+                 flush_interval: float=5,
+                 stream_uri: str='https://clientstream.launchdarkly.com',
+                 stream: bool=True,
+                 initial_reconnect_delay: float=1,
+                 defaults: dict={},
+                 send_events: Optional[bool]=None,
+                 update_processor_class: Optional[Callable[[str, 'Config', FeatureStore], UpdateProcessor]]=None,
+                 poll_interval: float=30,
+                 use_ldd: bool=False,
+                 feature_store: Optional[FeatureStore]=None,
                  feature_requester_class=None,
-                 event_processor_class=None,
-                 private_attribute_names=(),
-                 all_attributes_private=False,
-                 offline=False,
-                 user_keys_capacity=1000,
-                 user_keys_flush_interval=300,
-                 inline_users_in_events=False,
-                 http_proxy=None):
+                 event_processor_class: Callable[['Config'], EventProcessor]=None,
+                 private_attributes: Set[str]=set(),
+                 private_attribute_names: Set[str]=set(),
+                 all_attributes_private: bool=False,
+                 offline: bool=False,
+                 context_keys_capacity: int=1000,
+                 context_keys_flush_interval: float=300,
+                 user_keys_capacity: Optional[int] = None,
+                 user_keys_flush_interval: Optional[float] = None,
+                 diagnostic_opt_out: bool=False,
+                 diagnostic_recording_interval: int=900,
+                 wrapper_name: Optional[str]=None,
+                 wrapper_version: Optional[str]=None,
+                 http: HTTPConfig=HTTPConfig(),
+                 application: Optional[dict]=None):
+        """
+        :param mobile_key: The Mobile key for your LaunchDarkly account. This is always required.
+        :param context: Context used for evaluating feature flags. This is always required.
+        :param base_uri: The base URL for the LaunchDarkly server. Most users should use the default
+          value.
+        :param events_uri: The URL for the LaunchDarkly events server. Most users should use the
+          default value.
+        :param events_max_pending: The capacity of the events buffer. The client buffers up to this many
+          events in memory before flushing. If the capacity is exceeded before the buffer is flushed, events
+          will be discarded.
+        :param flush_interval: The number of seconds in between flushes of the events buffer. Decreasing
+          the flush interval means that the event buffer is less likely to reach capacity.
+        :param stream_uri: The URL for the LaunchDarkly streaming events server. Most users should
+          use the default value.
+        :param stream: Whether or not the streaming API should be used to receive flag updates. By
+          default, it is enabled. Streaming should only be disabled on the advice of LaunchDarkly support.
+        :param initial_reconnect_delay: The initial reconnect delay (in seconds) for the streaming
+          connection. The streaming service uses a backoff algorithm (with jitter) every time the connection needs
+          to be reestablished. The delay for the first reconnection will start near this value, and then
+          increase exponentially for any subsequent connection failures.
+        :param send_events: Whether or not to send events back to LaunchDarkly. This differs from
+          ``offline`` in that it affects only the sending of client-side events, not streaming or polling for
+          events from the server. By default, events will be sent.
+        :param offline: Whether the client should be initialized in offline mode. In offline mode,
+          default values are returned for all flags and no remote network requests are made. By default,
+          this is false.
+        :param poll_interval: The number of seconds between polls for flag updates if streaming is off.
+        :param use_ldd: Whether you are using the LaunchDarkly Relay Proxy in daemon mode. In this
+          configuration, the client will not use a streaming connection to listen for updates, but instead
+          will get feature state from a Redis instance. The ``stream`` and ``poll_interval`` options will be
+          ignored if this option is set to true. By default, this is false.
+          For more information, read the LaunchDarkly
+          documentation: https://docs.launchdarkly.com/home/relay-proxy/using#using-daemon-mode
+        :param array private_attribute: Marks a set of attributes private. Any users sent to LaunchDarkly
+          with this configuration active will have these attributes removed. Each item can be either the
+          name of an attribute ("email"), or a slash-delimited path ("/address/street") to mark a
+          property within a JSON object value as private.
+        :param array private_attribute_names: Deprecated alias for ``private_attributes`` ("names" is no longer
+          strictly accurate because these could also be attribute reference paths).
+        :param all_attributes_private: If true, all user attributes (other than the key) will be
+          private, not just the attributes specified in ``private_attributes``.
+        :param feature_store: A FeatureStore implementation
+        :param context_keys_capacity: The number of context keys that the event processor can remember at any
+          one time, so that duplicate context details will not be sent in analytics events.
+        :param context_keys_flush_interval: The interval in seconds at which the event processor will
+          reset its set of known context keys.
+        :param user_keys_capacity: Deprecated alias for ``context_keys_capacity``.
+        :param user_keys_flush_interval: Deprecated alias for ``context_keys_flush_interval``.
+        :param feature_requester_class: A factory for a FeatureRequester implementation taking the sdk key and config
+        :param event_processor_class: A factory for an EventProcessor implementation taking the config
+        :param update_processor_class: A factory for an UpdateProcessor implementation taking the sdk key,
+          config, and FeatureStore implementation
+        :param diagnostic_opt_out: Unless this field is set to True, the client will send
+          some diagnostics data to the LaunchDarkly servers in order to assist in the development of future SDK
+          improvements. These diagnostics consist of an initial payload containing some details of SDK in use,
+          the SDK's configuration, and the platform the SDK is being run on, as well as periodic information
+          on irregular occurrences such as dropped events.
+        :param diagnostic_recording_interval: The interval in seconds at which periodic diagnostic data is
+          sent. The default is 900 seconds (every 15 minutes) and the minimum value is 60 seconds.
+        :param wrapper_name: For use by wrapper libraries to set an identifying name for the wrapper
+          being used. This will be sent in HTTP headers during requests to the LaunchDarkly servers to allow
+          recording metrics on the usage of these wrapper libraries.
+        :param wrapper_version: For use by wrapper libraries to report the version of the library in
+          use. If ``wrapper_name`` is not set, this field will be ignored. Otherwise the version string will
+          be included in the HTTP headers along with the ``wrapper_name`` during requests to the LaunchDarkly
+          servers.
+        :param http: Optional properties for customizing the client's HTTP/HTTPS behavior. See
+          :class:`HTTPConfig`.
+        :param application: Optional properties for setting application metadata. See :py:attr:`~application`
+        """
+        self.__mobile_key = mobile_key
+        self.__context = context
+        self.__base_uri = base_uri.rstrip('/')
+        self.__events_uri = events_uri.rstrip('/')
+        self.__stream_uri = stream_uri.rstrip('/')
+        self.__update_processor_class = update_processor_class
+        self.__stream = stream
+        self.__initial_reconnect_delay = initial_reconnect_delay
+        self.__poll_interval = max(poll_interval, 30.0)
+        self.__use_ldd = use_ldd
+        self.__feature_store = InMemoryFeatureStore() if not feature_store else feature_store
+        self.__event_processor_class = event_processor_class
+        self.__feature_requester_class = feature_requester_class
+        self.__events_max_pending = events_max_pending
+        self.__flush_interval = flush_interval
+        self.__defaults = defaults
+        if offline is True:
+            send_events = False
+        self.__send_events = True if send_events is None else send_events
+        self.__private_attributes = private_attributes or private_attribute_names
+        self.__all_attributes_private = all_attributes_private
+        self.__offline = offline
+        self.__context_keys_capacity = context_keys_capacity if user_keys_capacity is None else user_keys_capacity
+        self.__context_keys_flush_interval = context_keys_flush_interval if user_keys_flush_interval is None else user_keys_flush_interval
+        self.__diagnostic_opt_out = diagnostic_opt_out
+        self.__diagnostic_recording_interval = max(diagnostic_recording_interval, 60)
+        self.__wrapper_name = wrapper_name
+        self.__wrapper_version = wrapper_version
+        self.__http = http
+        self.__application = validate_application_info(application or {}, log)
 
-    self.__sdk_key = sdk_key
+    def copy_with_new_mobile_key(self, new_mobile_key: str) -> 'Config':
+        """Returns a new ``Config`` instance that is the same as this one, except for having a different SDK key.
 
-    if defaults is None:
-      defaults = {}
+        :param new_sdk_key: the new SDK key
+        """
+        return Config(mobile_key=new_mobile_key,
+                      base_uri=self.__base_uri,
+                      events_uri=self.__events_uri,
+                      events_max_pending=self.__events_max_pending,
+                      flush_interval=self.__flush_interval,
+                      stream_uri=self.__stream_uri,
+                      stream=self.__stream,
+                      initial_reconnect_delay=self.__initial_reconnect_delay,
+                      defaults=self.__defaults,
+                      send_events=self.__send_events,
+                      update_processor_class=self.__update_processor_class,
+                      poll_interval=self.__poll_interval,
+                      use_ldd=self.__use_ldd,
+                      feature_store=self.__feature_store,
+                      feature_requester_class=self.__feature_requester_class,
+                      event_processor_class=self.__event_processor_class,
+                      private_attributes=self.__private_attributes,
+                      all_attributes_private=self.__all_attributes_private,
+                      offline=self.__offline,
+                      context_keys_capacity=self.__context_keys_capacity,
+                      context_keys_flush_interval=self.__context_keys_flush_interval,
+                      diagnostic_opt_out=self.__diagnostic_opt_out,
+                      diagnostic_recording_interval=self.__diagnostic_recording_interval,
+                      wrapper_name=self.__wrapper_name,
+                      wrapper_version=self.__wrapper_version,
+                      http=self.__http,
+                      big_segments=self.__big_segments)
+    def copy_with_new_context(self, new_context, new_mobile_key: str = None) -> 'Config':
+        """Returns a new ``Config`` instance that is the same as this one, except for having a different SDK key.
 
-    self.__base_uri = base_uri.rstrip('\\')
-    self.__events_uri = events_uri.rstrip('\\')
-    self.__stream_uri = stream_uri.rstrip('\\')
-    self.__update_processor_class = update_processor_class
-    self.__stream = stream
-    self.__poll_interval = max(poll_interval, 30)
-    self.__use_ldd = use_ldd
-    self.__feature_store = InMemoryFeatureStore() if not feature_store else feature_store
-    self.__event_processor_class = DefaultEventProcessor if not event_processor_class else event_processor_class
-    self.__feature_requester_class = feature_requester_class
-    self.__connect_timeout = connect_timeout
-    self.__read_timeout = read_timeout
-    self.__events_max_pending = events_max_pending
-    self.__flush_interval = flush_interval
-    self.__verify_ssl = verify_ssl
-    self.__defaults = defaults
-    if offline is True:
-        send_events = False
-    self.__send_events = events_enabled if send_events is None else send_events
-    self.__private_attribute_names = private_attribute_names
-    self.__all_attributes_private = all_attributes_private
-    self.__offline = offline
-    self.__user_keys_capacity = user_keys_capacity
-    self.__user_keys_flush_interval = user_keys_flush_interval
-    self.__inline_users_in_events = inline_users_in_events
-    self.__http_proxy = http_proxy
+        :param new_sdk_key: the new SDK key
+        """
+        key = new_mobile_key if new_mobile_key else self.__mobile_key
+        return Config(mobile_key=key,
+                      context=new_context,
+                      base_uri=self.__base_uri,
+                      events_uri=self.__events_uri,
+                      events_max_pending=self.__events_max_pending,
+                      flush_interval=self.__flush_interval,
+                      stream_uri=self.__stream_uri,
+                      stream=self.__stream,
+                      initial_reconnect_delay=self.__initial_reconnect_delay,
+                      defaults=self.__defaults,
+                      send_events=self.__send_events,
+                      update_processor_class=self.__update_processor_class,
+                      poll_interval=self.__poll_interval,
+                      use_ldd=self.__use_ldd,
+                      feature_store=self.__feature_store,
+                      feature_requester_class=self.__feature_requester_class,
+                      event_processor_class=self.__event_processor_class,
+                      private_attributes=self.__private_attributes,
+                      all_attributes_private=self.__all_attributes_private,
+                      offline=self.__offline,
+                      context_keys_capacity=self.__context_keys_capacity,
+                      context_keys_flush_interval=self.__context_keys_flush_interval,
+                      diagnostic_opt_out=self.__diagnostic_opt_out,
+                      diagnostic_recording_interval=self.__diagnostic_recording_interval,
+                      wrapper_name=self.__wrapper_name,
+                      wrapper_version=self.__wrapper_version,
+                      http=self.__http)
 
-    self.__use_report = use_report
-    self.__evaluation_reasons = evaluation_reasons
-    self.__user = user
-    self.__user_filter = UserFilter(self)
-    if user is not None:
-      self.__user_filtered = self.__user_filter.filter_user_props(user)
-      self.__user_json = json.dumps(self.__user_filtered).encode('utf-8')
-      self.__user_b64 = urlsafe_b64encode(self.__user_json).decode('utf-8')
+    # for internal use only - probably should be part of the client logic
+    def get_default(self, key, default):
+        return default if key not in self.__defaults else self.__defaults[key]
 
-
-  def copy_with_new_sdk_key(self, new_sdk_key):
-    """Returns a new ``Config`` instance that is the same as this one, except for having a different SDK key.
-    :param string new_sdk_key: the new SDK key
-    :rtype: ldclient.config.Config
-    """
-    return MobileConfig(sdk_key=new_sdk_key,
-                  base_uri=self.__base_uri,
-                  events_uri=self.__events_uri,
-                  connect_timeout=self.__connect_timeout,
-                  read_timeout=self.__read_timeout,
-                  events_max_pending=self.__events_max_pending,
-                  flush_interval=self.__flush_interval,
-                  stream_uri=self.__stream_uri,
-                  stream=self.__stream,
-                  verify_ssl=self.__verify_ssl,
-                  defaults=self.__defaults,
-                  send_events=self.__send_events,
-                  update_processor_class=self.__update_processor_class,
-                  poll_interval=self.__poll_interval,
-                  use_ldd=self.__use_ldd,
-                  feature_store=self.__feature_store,
-                  feature_requester_class=self.__feature_requester_class,
-                  event_processor_class=self.__event_processor_class,
-                  private_attribute_names=self.__private_attribute_names,
-                  all_attributes_private=self.__all_attributes_private,
-                  offline=self.__offline,
-                  user_keys_capacity=self.__user_keys_capacity,
-                  user_keys_flush_interval=self.__user_keys_flush_interval,
-                  inline_users_in_events=self.__inline_users_in_events,
-                  use_report=self.__use_report,
-                  evaluation_reasons=self.__evaluation_reasons,
-                  user=self.__user)
-  def copy_with_new_user(self, new_user, new_sdk_key=None):
-    """Returns a new ``Config`` instance that is the same as this one, except for having a different SDK key.
-    :param string new_sdk_key: the new SDK key
-    :rtype: ldclient.config.Config
-    """
-    key = new_sdk_key or self.sdk_key
+    @property
+    def mobile_key(self) -> Optional[str]:
+        return self.__mobile_key
     
-    return MobileConfig(sdk_key=key,
-                  base_uri=self.__base_uri,
-                  events_uri=self.__events_uri,
-                  connect_timeout=self.__connect_timeout,
-                  read_timeout=self.__read_timeout,
-                  events_max_pending=self.__events_max_pending,
-                  flush_interval=self.__flush_interval,
-                  stream_uri=self.__stream_uri,
-                  stream=self.__stream,
-                  verify_ssl=self.__verify_ssl,
-                  defaults=self.__defaults,
-                  send_events=self.__send_events,
-                  update_processor_class=self.__update_processor_class,
-                  poll_interval=self.__poll_interval,
-                  use_ldd=self.__use_ldd,
-                  feature_store=self.__feature_store,
-                  feature_requester_class=self.__feature_requester_class,
-                  event_processor_class=self.__event_processor_class,
-                  private_attribute_names=self.__private_attribute_names,
-                  all_attributes_private=self.__all_attributes_private,
-                  offline=self.__offline,
-                  user_keys_capacity=self.__user_keys_capacity,
-                  user_keys_flush_interval=self.__user_keys_flush_interval,
-                  inline_users_in_events=self.__inline_users_in_events,
-                  use_report=self.__use_report,
-                  evaluation_reasons=self.__evaluation_reasons,
-                  user=new_user)
+    @property
+    def context(self):
+        return self.__context
+    
+    @property 
+    def context_base64(self):
+       return urlsafe_b64encode(self.context_json).decode('utf-8')
+    
+    @property
+    def base_uri(self) -> str:
+        return self.__base_uri
 
+    # for internal use only - also no longer used, will remove
+    @property
+    def get_latest_flags_uri(self):
+        return self.__base_uri + GET_LATEST_FEATURES_PATH
 
-  @property
-  def evaluation_reasons(self):
-    return self.__evaluation_reasons
-  @property
-  def use_report(self):
-    return self.__use_report
-  @property
-  def user(self):
-    return self.__user
-  @property
-  def user_b64(self):
-    return self.__user_b64
-  @property
-  def user_json(self):
-    return self.__user_json
+    # for internal use only
+    @property
+    def events_base_uri(self):
+        return self.__events_uri
 
+    # for internal use only - should construct the URL path in the events code, not here
+    @property
+    def events_uri(self):
+        return self.__events_uri + '/bulk'
 
-  # for internal use only - probably should be part of the client logic
-  def get_default(self, key, default):
-    return default if key not in self.__defaults else self.__defaults[key]
+    # for internal use only
+    @property
+    def stream_base_uri(self):
+        return self.__stream_uri
 
-  @property
-  def sdk_key(self):
-      return self.__sdk_key
+    # for internal use only - should construct the URL path in the streaming code, not here
+    @property
+    def stream_uri(self):
+        return self.__stream_uri + STREAM_FLAGS_PATH
 
-  @property
-  def base_uri(self):
-      return self.__base_uri
+    @property
+    def update_processor_class(self) -> Optional[Callable[[str, 'Config', FeatureStore], UpdateProcessor]]:
+        return self.__update_processor_class
 
-  # for internal use only - also no longer used, will remove
-  @property
-  def get_latest_flags_uri(self):
-      return self.__base_uri + '/msdk/evalx'
+    @property
+    def stream(self) -> bool:
+        return self.__stream
 
-  # for internal use only - should construct the URL path in the events code, not here
-  @property
-  def events_uri(self):
-      return self.__events_uri + '/mobile/events/bulk'
+    @property
+    def initial_reconnect_delay(self) -> float:
+        return self.__initial_reconnect_delay
+    @property
+    def poll_interval(self) -> float:
+        return self.__poll_interval
 
-  # for internal use only
-  @property
-  def stream_base_uri(self):
-      return self.__stream_uri
+    @property
+    def use_ldd(self) -> bool:
+        return self.__use_ldd
 
-  # for internal use only - should construct the URL path in the streaming code, not here
-  @property
-  def stream_uri(self):
-      return self.__stream_uri + '/msdk/evalx'
+    @property
+    def feature_store(self) -> FeatureStore:
+        return self.__feature_store
 
-  @property
-  def update_processor_class(self):
-      return self.__update_processor_class
+    @property
+    def event_processor_class(self) -> Optional[Callable[['Config'], EventProcessor]]:
+        return self.__event_processor_class
 
-  @property
-  def stream(self):
-      return self.__stream
+    @property
+    def feature_requester_class(self) -> Callable:
+        return self.__feature_requester_class
 
-  @property
-  def poll_interval(self):
-      return self.__poll_interval
+    @property
+    def send_events(self) -> bool:
+        return self.__send_events
 
-  @property
-  def use_ldd(self):
-      return self.__use_ldd
+    @property
+    def events_max_pending(self) -> int:
+        return self.__events_max_pending
 
-  @property
-  def feature_store(self):
-      return self.__feature_store
+    @property
+    def flush_interval(self) -> float:
+        return self.__flush_interval
 
-  @property
-  def event_processor_class(self):
-      return self.__event_processor_class
+    @property
+    def private_attributes(self) -> List[str]:
+        return list(self.__private_attributes)
 
-  @property
-  def feature_requester_class(self):
-      return self.__feature_requester_class
+    @property
+    def private_attribute_names(self) -> List[str]:
+        return self.private_attributes
 
-  @property
-  def connect_timeout(self):
-      return self.__connect_timeout
+    @property
+    def all_attributes_private(self) -> bool:
+        return self.__all_attributes_private
 
-  @property
-  def read_timeout(self):
-      return self.__read_timeout
+    @property
+    def offline(self) -> bool:
+        return self.__offline
 
-  @property
-  def events_enabled(self):
-      return self.__send_events
+    @property
+    def context_keys_capacity(self) -> int:
+        return self.__context_keys_capacity
 
-  @property
-  def send_events(self):
-      return self.__send_events
+    @property
+    def context_keys_flush_interval(self) -> float:
+        return self.__context_keys_flush_interval
 
-  @property
-  def events_max_pending(self):
-      return self.__events_max_pending
+    @property
+    def user_keys_capacity(self) -> int:
+        """Deprecated name for :attr:`context_keys_capacity`."""
+        return self.context_keys_capacity
 
-  @property
-  def flush_interval(self):
-      return self.__flush_interval
+    @property
+    def user_keys_flush_interval(self) -> float:
+        """Deprecated name for :attr:`context_keys_flush_interval`."""
+        return self.context_keys_flush_interval
 
-  @property
-  def verify_ssl(self):
-      return self.__verify_ssl
+    @property
+    def diagnostic_opt_out(self) -> bool:
+        return self.__diagnostic_opt_out
 
-  @property
-  def private_attribute_names(self):
-      return list(self.__private_attribute_names)
+    @property
+    def diagnostic_recording_interval(self) -> int:
+        return self.__diagnostic_recording_interval
 
-  @property
-  def all_attributes_private(self):
-      return self.__all_attributes_private
+    @property
+    def wrapper_name(self) -> Optional[str]:
+        return self.__wrapper_name
 
-  @property
-  def offline(self):
-      return self.__offline
+    @property
+    def wrapper_version(self) -> Optional[str]:
+        return self.__wrapper_version
 
-  @property
-  def user_keys_capacity(self):
-      return self.__user_keys_capacity
+    @property
+    def http(self) -> HTTPConfig:
+        return self.__http
 
-  @property
-  def user_keys_flush_interval(self):
-      return self.__user_keys_flush_interval
+    @property
+    def application(self) -> dict:
+        """
+        An object that allows configuration of application metadata.
 
-  @property
-  def inline_users_in_events(self):
-      return self.__inline_users_in_events
+        Application metadata may be used in LaunchDarkly analytics or other
+        product features, but does not affect feature flag evaluations.
 
-  @property
-  def http_proxy(self):
-      return self.__http_proxy
-  
+        If you want to set non-default values for any of these fields, provide
+        the appropriately configured dict to the {Config} object.
+        """
+        return self.__application
 
+    def _validate(self):
+        if self.offline is False and self.mobile_key is None or self.mobile_key == '':
+            log.warning("Missing or blank mobile_key.")
+        if self.context is None:
+            log.warning("Missing context.")
 
-  def _validate(self):
-      if self.offline is False and self.sdk_key is None or self.sdk_key == '':
-          log.warning("Missing or blank sdk_key.")
+__all__ = ['Config', 'HTTPConfig']
